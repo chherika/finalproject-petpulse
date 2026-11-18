@@ -1,87 +1,276 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: petpulse-deployment
-  labels:
-    app: petpulse
+  name: registration
+  labels: { app: registration }
 spec:
   replicas: 1
-  selector:
-    matchLabels:
-      app: petpulse
+  selector: { matchLabels: { app: registration } }
   template:
-    metadata:
-      labels:
-        app: petpulse
+    metadata: { labels: { app: registration } }
     spec:
       containers:
-        # --- Pod 1 Container A: API Gateway ---
-        - name: apigateway
-          image: boromey/petpulse-api-gateway:latest
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 8080
+        - name: registration
+          image: petpulse/registration:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8001 }]
           env:
-            - name: PORT
-              value: "8080"
-            - name: LOGIN_URL
-              value: "http://127.0.0.1:8002"
-            - name: REGISTRATION_URL
-              value: "http://petpulse-registration-service:8001"
-            - name: JWT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: mongo-secret
-                  key: JWT_SECRET
-
-        # --- Pod 1 Container B: Login Microservice ---
-        - name: login-service
-          image: boromey/petpulse-login:latest
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 8002
-          env:
-            - name: PORT
-              value: "8002"
+            - { name: NODE_ENV, value: "production" }
+            - { name: PORT, value: "8001" }
             - name: MONGO_URI
-              valueFrom:
-                secretKeyRef:
-                  name: mongo-secret
-                  key: MONGO_URI
-            - name: JWT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: mongo-secret
-                  key: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: petpulse-secrets, key: MONGO_URI } }
+            - name: VET_INVITE_CODE
+              valueFrom: { secretKeyRef: { name: petpulse-secrets, key: VET_INVITE_CODE } }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "256Mi" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8001 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 8001 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: petpulse-registration-deployment
-  labels:
-    app: petpulse-reg
+  name: login
+  labels: { app: login }
 spec:
   replicas: 1
-  selector:
-    matchLabels:
-      app: petpulse-reg
+  selector: { matchLabels: { app: login } }
   template:
-    metadata:
-      labels:
-        app: petpulse-reg
+    metadata: { labels: { app: login } }
     spec:
       containers:
-        # --- Pod 2: Registration Microservice ---
-        - name: registration-service
-          image: boromey/petpulse-registration:latest
-          imagePullPolicy: Always
-          ports:
-            - containerPort: 8001
+        - name: login
+          image: petpulse/login:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8002 }]
           env:
-            - name: PORT
-              value: "8001"
+            - { name: NODE_ENV, value: "production" }
+            - { name: PORT, value: "8002" }
             - name: MONGO_URI
-              valueFrom:
-                secretKeyRef:
-                  name: mongo-secret
-                  key: MONGO_URI
+              valueFrom: { secretKeyRef: { name: petpulse-secrets, key: MONGO_URI } }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: petpulse-secrets, key: JWT_SECRET } }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "256Mi" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8002 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 8002 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pet-service
+  labels: { app: pet-service }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: pet-service } }
+  template:
+    metadata: { labels: { app: pet-service } }
+    spec:
+      volumes:
+        - name: app-logs
+          emptyDir: {}
+      containers:
+        - name: pet-service
+          image: petpulse/pet-service:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8003 }]
+          env:
+            - { name: NODE_ENV, value: "production" }
+            - { name: PORT, value: "8003" }
+            - { name: LOG_DIR, value: "/var/log/app" }
+            - name: INSTANCE_ID
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+            - name: MONGO_URI
+              valueFrom: { secretKeyRef: { name: petpulse-secrets, key: MONGO_URI } }
+          volumeMounts:
+            - { name: app-logs, mountPath: /var/log/app }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "256Mi" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8003 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 8003 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+        - name: log-sidecar
+          image: busybox:1.36
+          command: ["sh", "-c", "mkdir -p /var/log/app && chmod 777 /var/log/app && touch /var/log/app/pet.log && chmod 666 /var/log/app/pet.log && tail -F /var/log/app/pet.log"]
+          volumeMounts:
+            - { name: app-logs, mountPath: /var/log/app }
+          resources:
+            requests: { cpu: "25m", memory: "32Mi" }
+            limits:   { cpu: "100m", memory: "64Mi" }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: appointment
+  labels: { app: appointment }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: appointment } }
+  template:
+    metadata: { labels: { app: appointment } }
+    spec:
+      containers:
+        - name: appointment
+          image: petpulse/appointment:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8004 }]
+          env:
+            - { name: NODE_ENV, value: "production" }
+            - { name: PORT, value: "8004" }
+            - name: MONGO_URI
+              valueFrom: { secretKeyRef: { name: petpulse-secrets, key: MONGO_URI } }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "256Mi" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8004 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 8004 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: prescription
+  labels: { app: prescription }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: prescription } }
+  template:
+    metadata: { labels: { app: prescription } }
+    spec:
+      containers:
+        - name: prescription
+          image: petpulse/prescription:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8005 }]
+          env:
+            - { name: NODE_ENV, value: "production" }
+            - { name: PORT, value: "8005" }
+            - name: MONGO_URI
+              valueFrom: { secretKeyRef: { name: petpulse-secrets, key: MONGO_URI } }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "256Mi" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8005 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 8005 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: billing
+  labels: { app: billing }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: billing } }
+  template:
+    metadata: { labels: { app: billing } }
+    spec:
+      containers:
+        - name: billing
+          image: petpulse/billing:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8006 }]
+          env:
+            - { name: NODE_ENV, value: "production" }
+            - { name: PORT, value: "8006" }
+            - name: MONGO_URI
+              valueFrom: { secretKeyRef: { name: petpulse-secrets, key: MONGO_URI } }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "256Mi" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8006 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 8006 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-gateway
+  labels: { app: api-gateway }
+spec:
+  replicas: 2
+  selector: { matchLabels: { app: api-gateway } }
+  template:
+    metadata: { labels: { app: api-gateway } }
+    spec:
+      containers:
+        - name: api-gateway
+          image: petpulse/api-gateway:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 8000 }]
+          env:
+            - { name: NODE_ENV, value: "production" }
+            - { name: PORT, value: "8000" }
+            - name: JWT_SECRET
+              valueFrom: { secretKeyRef: { name: petpulse-secrets, key: JWT_SECRET } }
+            - { name: REGISTRATION_URL, value: "http://registration:8001" }
+            - { name: LOGIN_URL, value: "http://login:8002" }
+            - { name: APPOINTMENT_URL, value: "http://appointment:8004" }
+            - { name: PRESCRIPTION_URL, value: "http://prescription:8005" }
+            - { name: BILLING_URL, value: "http://billing:8006" }
+            - { name: PET_URL, value: "http://pet-service:8003" }
+          resources:
+            requests: { cpu: "100m", memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "256Mi" }
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels: { app: frontend }
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: frontend } }
+  template:
+    metadata: { labels: { app: frontend } }
+    spec:
+      containers:
+        - name: frontend
+          image: petpulse/frontend:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports: [{ containerPort: 80 }]
+          resources:
+            requests: { cpu: "50m", memory: "64Mi" }
+            limits:   { cpu: "200m", memory: "128Mi" }
