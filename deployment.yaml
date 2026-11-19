@@ -9,6 +9,10 @@ spec:
   template:
     metadata: { labels: { app: registration } }
     spec:
+      volumes:
+        - name: app-logs
+          persistentVolumeClaim:
+            claimName: petpulse-logs-pvc
       containers:
         - name: registration
           image: petpulse/registration:1.0.0
@@ -17,10 +21,15 @@ spec:
           env:
             - { name: NODE_ENV, value: "production" }
             - { name: PORT, value: "8001" }
+            - { name: LOG_DIR, value: "/var/log/app" }
+            - name: INSTANCE_ID
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
             - name: MONGO_URI
               valueFrom: { secretKeyRef: { name: petpulse-secrets, key: MONGO_URI } }
             - name: VET_INVITE_CODE
               valueFrom: { secretKeyRef: { name: petpulse-secrets, key: VET_INVITE_CODE } }
+          volumeMounts:
+            - { name: app-logs, mountPath: /var/log/app }
           resources:
             requests: { cpu: "100m", memory: "128Mi" }
             limits:   { cpu: "500m", memory: "256Mi" }
@@ -44,6 +53,10 @@ spec:
   template:
     metadata: { labels: { app: login } }
     spec:
+      volumes:
+        - name: app-logs
+          persistentVolumeClaim:
+            claimName: petpulse-logs-pvc
       containers:
         - name: login
           image: petpulse/login:1.0.0
@@ -52,10 +65,15 @@ spec:
           env:
             - { name: NODE_ENV, value: "production" }
             - { name: PORT, value: "8002" }
+            - { name: LOG_DIR, value: "/var/log/app" }
+            - name: INSTANCE_ID
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
             - name: MONGO_URI
               valueFrom: { secretKeyRef: { name: petpulse-secrets, key: MONGO_URI } }
             - name: JWT_SECRET
               valueFrom: { secretKeyRef: { name: petpulse-secrets, key: JWT_SECRET } }
+          volumeMounts:
+            - { name: app-logs, mountPath: /var/log/app }
           resources:
             requests: { cpu: "100m", memory: "128Mi" }
             limits:   { cpu: "500m", memory: "256Mi" }
@@ -81,7 +99,8 @@ spec:
     spec:
       volumes:
         - name: app-logs
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: petpulse-logs-pvc
       containers:
         - name: pet-service
           image: petpulse/pet-service:1.0.0
@@ -128,6 +147,10 @@ spec:
   template:
     metadata: { labels: { app: appointment } }
     spec:
+      volumes:
+        - name: app-logs
+          persistentVolumeClaim:
+            claimName: petpulse-logs-pvc
       containers:
         - name: appointment
           image: petpulse/appointment:1.0.0
@@ -136,8 +159,13 @@ spec:
           env:
             - { name: NODE_ENV, value: "production" }
             - { name: PORT, value: "8004" }
+            - { name: LOG_DIR, value: "/var/log/app" }
+            - name: INSTANCE_ID
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
             - name: MONGO_URI
               valueFrom: { secretKeyRef: { name: petpulse-secrets, key: MONGO_URI } }
+          volumeMounts:
+            - { name: app-logs, mountPath: /var/log/app }
           resources:
             requests: { cpu: "100m", memory: "128Mi" }
             limits:   { cpu: "500m", memory: "256Mi" }
@@ -161,6 +189,10 @@ spec:
   template:
     metadata: { labels: { app: prescription } }
     spec:
+      volumes:
+        - name: app-logs
+          persistentVolumeClaim:
+            claimName: petpulse-logs-pvc
       containers:
         - name: prescription
           image: petpulse/prescription:1.0.0
@@ -169,8 +201,13 @@ spec:
           env:
             - { name: NODE_ENV, value: "production" }
             - { name: PORT, value: "8005" }
+            - { name: LOG_DIR, value: "/var/log/app" }
+            - name: INSTANCE_ID
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
             - name: MONGO_URI
               valueFrom: { secretKeyRef: { name: petpulse-secrets, key: MONGO_URI } }
+          volumeMounts:
+            - { name: app-logs, mountPath: /var/log/app }
           resources:
             requests: { cpu: "100m", memory: "128Mi" }
             limits:   { cpu: "500m", memory: "256Mi" }
@@ -194,6 +231,10 @@ spec:
   template:
     metadata: { labels: { app: billing } }
     spec:
+      volumes:
+        - name: app-logs
+          persistentVolumeClaim:
+            claimName: petpulse-logs-pvc
       containers:
         - name: billing
           image: petpulse/billing:1.0.0
@@ -202,8 +243,13 @@ spec:
           env:
             - { name: NODE_ENV, value: "production" }
             - { name: PORT, value: "8006" }
+            - { name: LOG_DIR, value: "/var/log/app" }
+            - name: INSTANCE_ID
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
             - name: MONGO_URI
               valueFrom: { secretKeyRef: { name: petpulse-secrets, key: MONGO_URI } }
+          volumeMounts:
+            - { name: app-logs, mountPath: /var/log/app }
           resources:
             requests: { cpu: "100m", memory: "128Mi" }
             limits:   { cpu: "500m", memory: "256Mi" }
@@ -227,6 +273,10 @@ spec:
   template:
     metadata: { labels: { app: api-gateway } }
     spec:
+      volumes:
+        - name: app-logs
+          persistentVolumeClaim:
+            claimName: petpulse-logs-pvc
       containers:
         - name: api-gateway
           image: petpulse/api-gateway:1.0.0
@@ -235,6 +285,9 @@ spec:
           env:
             - { name: NODE_ENV, value: "production" }
             - { name: PORT, value: "8000" }
+            - { name: LOG_DIR, value: "/var/log/app" }
+            - name: INSTANCE_ID
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
             - name: JWT_SECRET
               valueFrom: { secretKeyRef: { name: petpulse-secrets, key: JWT_SECRET } }
             - { name: REGISTRATION_URL, value: "http://registration:8001" }
@@ -243,6 +296,8 @@ spec:
             - { name: PRESCRIPTION_URL, value: "http://prescription:8005" }
             - { name: BILLING_URL, value: "http://billing:8006" }
             - { name: PET_URL, value: "http://pet-service:8003" }
+          volumeMounts:
+            - { name: app-logs, mountPath: /var/log/app }
           resources:
             requests: { cpu: "100m", memory: "128Mi" }
             limits:   { cpu: "500m", memory: "256Mi" }

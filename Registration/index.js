@@ -1,4 +1,6 @@
 require('dotenv').config();
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
@@ -11,19 +13,33 @@ app.disable('x-powered-by');
 app.use(express.json({ limit: '10kb' }));
 dbConnect();
 
+// Shared-volume file logging (one file per pod)
+const LOG_DIR = process.env.LOG_DIR || './logs';
+const INSTANCE_ID = process.env.INSTANCE_ID || 'local';
+let LOG_FILE = null;
+try {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+  LOG_FILE = path.join(LOG_DIR, `registration-${INSTANCE_ID}.log`);
+} catch (e) {
+  console.error(JSON.stringify({ level: 'warn', service: 'registration', message: 'File logging disabled', error: e.message }));
+}
+
 app.use((req, res, next) => {
   const start = Date.now();
   res.on('finish', () => {
-    console.log(JSON.stringify({
+    const line = JSON.stringify({
       timestamp: new Date().toISOString(),
       level: res.statusCode >= 500 ? 'error' : 'info',
       service: 'registration',
+      instance: INSTANCE_ID,
       requestId: req.headers['x-request-id'] || 'none',
       method: req.method,
       path: req.originalUrl,
       status: res.statusCode,
       durationMs: Date.now() - start
-    }));
+    });
+    console.log(line);
+    if (LOG_FILE) fs.appendFile(LOG_FILE, line + '\n', () => {});
   });
   next();
 });
@@ -53,7 +69,7 @@ app.post('/api/v1/auth/register', async (req, res, next) => {
       return res.status(400).json({
         success: false,
         code: 'VALIDATION_ERROR',
-        message: parsed.error.errors[0].message,
+        message: parsed.error.issues[0].message,
         requestId: req.headers['x-request-id']
       });
     }

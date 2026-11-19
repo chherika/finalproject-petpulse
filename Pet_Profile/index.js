@@ -106,7 +106,7 @@ app.post('/api/v1/pets', async (req, res, next) => {
       return res.status(400).json({
         success: false,
         code: 'VALIDATION_ERROR',
-        message: parsed.error.errors[0].message,
+        message: parsed.error.issues[0].message,
         requestId: req.headers['x-request-id']
       });
     }
@@ -148,7 +148,7 @@ app.put('/api/v1/pets/:id/medical-records', async (req, res, next) => {
 
     const parsed = medicalRecordSchema.safeParse(req.body);
     if (!parsed.success) {
-      return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: parsed.error.errors[0].message });
+      return res.status(400).json({ success: false, code: 'VALIDATION_ERROR', message: parsed.error.issues[0].message });
     }
 
     const pet = await Pet.findByIdAndUpdate(

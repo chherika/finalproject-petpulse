@@ -1,5 +1,7 @@
 require('dotenv').config();
 const crypto = require('crypto');
+const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
@@ -8,12 +10,24 @@ const proxy = require('express-http-proxy');
 const jwt = require('jsonwebtoken');
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 8000;
 const JWT_SECRET = process.env.JWT_SECRET;
 
 if (!JWT_SECRET) {
   console.error(JSON.stringify({ level: 'fatal', message: 'JWT_SECRET is required' }));
   process.exit(1);
+}
+
+// Shared-volume file logging (one file per pod)
+const LOG_DIR = process.env.LOG_DIR || './logs';
+const INSTANCE_ID = process.env.INSTANCE_ID || 'local';
+let LOG_FILE = null;
+try {
+  fs.mkdirSync(LOG_DIR, { recursive: true });
+  LOG_FILE = path.join(LOG_DIR, `gateway-${INSTANCE_ID}.log`);
+} catch (e) {
+  console.error(JSON.stringify({ level: 'warn', service: 'api-gateway', message: 'File logging disabled', error: e.message }));
 }
 
 const REGISTRATION_URL = process.env.REGISTRATION_URL || 'http://localhost:8001';
@@ -48,16 +62,19 @@ app.use((req, res, next) => {
   delete req.headers['x-user-role'];
 
   res.on('finish', () => {
-    console.log(JSON.stringify({
+    const line = JSON.stringify({
       timestamp: new Date().toISOString(),
       level: res.statusCode >= 500 ? 'error' : 'info',
       service: 'api-gateway',
+      instance: INSTANCE_ID,
       requestId,
       method: req.method,
       path: req.originalUrl,
       status: res.statusCode,
       durationMs: Date.now() - start
-    }));
+    });
+    console.log(line);
+    if (LOG_FILE) fs.appendFile(LOG_FILE, line + '\n', () => {});
   });
   next();
 });
